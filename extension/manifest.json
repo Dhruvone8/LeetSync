@@ -10,7 +10,8 @@
     ],
     "host_permissions": [
         "https://leetcode.com/*",
-        "https://github.com/*"
+        "https://github.com/*",
+        "https://leetcode-github-sync.onrender.com/*"
     ],
     "background": {
         "service_worker": "background.js"

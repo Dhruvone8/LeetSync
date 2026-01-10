@@ -1,6 +1,6 @@
 // Popup script for LeetCode GitHub Sync Extension
 
-const SERVER_URL = 'http://localhost:3000';
+const SERVER_URL = 'https://leetcode-github-sync.onrender.com';
 
 // DOM elements
 const onboardingView = document.getElementById('onboarding-view');
