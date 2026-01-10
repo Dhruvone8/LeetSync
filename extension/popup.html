@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeetCode GitHub Sync</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 384px;
+            height: 500px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: white;
+            color: #1e3a8a;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .content {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .onboarding {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+
+        .icon-github {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 1.5rem;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            text-align: center;
+        }
+
+        .subtitle {
+            text-align: center;
+            margin-bottom: 2rem;
+            font-size: 0.875rem;
+            opacity: 0.8;
+        }
+
+        .btn {
+            width: 100%;
+            background: #1e3a8a;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            transition: transform 0.2s;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: scale(1.05);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid #1e3a8a;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            color: #1e3a8a;
+        }
+
+        input:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+        }
+
+        .dashboard {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h2 {
+            font-size: 1.25rem;
+            font-weight: bold;
+        }
+
+        .disconnect-btn {
+            background: none;
+            border: none;
+            color: #1e3a8a;
+            opacity: 0.7;
+            font-size: 0.875rem;
+            cursor: pointer;
+            padding: 0.25rem;
+        }
+
+        .disconnect-btn:hover {
+            opacity: 1;
+        }
+
+        .status-card {
+            background: #eff6ff;
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+
+        .status-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .status-title {
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .status-subtitle {
+            font-size: 0.75rem;
+            opacity: 0.7;
+        }
+
+        .settings-card {
+            border: 2px solid #1e3a8a;
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+
+        .settings-title {
+            font-weight: 500;
+            margin-bottom: 0.75rem;
+        }
+
+        .settings-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .settings-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .last-sync {
+            text-align: center;
+            font-size: 0.875rem;
+            opacity: 0.7;
+        }
+
+        .message {
+            text-align: center;
+            font-size: 0.875rem;
+            margin-top: 1rem;
+        }
+
+        .message.success {
+            color: #10b981;
+        }
+
+        footer {
+            padding: 0.75rem;
+            text-align: center;
+            font-size: 0.75rem;
+            border-top: 1px solid #eff6ff;
+        }
+
+        footer a {
+            font-weight: 500;
+            text-decoration: none;
+            color: #1e3a8a;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        svg {
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="content">
+            <!-- Onboarding View -->
+            <div id="onboarding-view" class="onboarding">
+                <svg class="icon-github" viewBox="0 0 24 24" fill="none" stroke="#1e3a8a" stroke-width="2">
+                    <path
+                        d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22">
+                    </path>
+                </svg>
+                <h1>LeetCode GitHub Sync</h1>
+                <p class="subtitle">Automatically sync your LeetCode solutions to GitHub</p>
+
+                <div id="auth-step" style="width: 100%;">
+                    <button id="connect-github" class="btn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path
+                                d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22">
+                            </path>
+                        </svg>
+                        <span>Connect with GitHub</span>
+                    </button>
+                </div>
+
+                <div id="repo-step" class="hidden" style="width: 100%;">
+                    <div class="form-group">
+                        <label for="repo-input">Repository Name</label>
+                        <input type="text" id="repo-input" placeholder="username/leetcode-solutions" />
+                    </div>
+                    <button id="save-repo" class="btn">Continue</button>
+                </div>
+
+                <div id="message" class="message hidden"></div>
+            </div>
+
+            <!-- Dashboard View -->
+            <div id="dashboard-view" class="dashboard hidden">
+                <div class="header">
+                    <h2>Sync Status</h2>
+                    <button id="disconnect" class="disconnect-btn">Disconnect</button>
+                </div>
+
+                <div class="status-card">
+                    <div class="status-header">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e3a8a" stroke-width="2">
+                            <path
+                                d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22">
+                            </path>
+                        </svg>
+                        <div style="flex: 1;">
+                            <div class="status-title" id="username-display"></div>
+                            <div class="status-subtitle" id="repo-display"></div>
+                        </div>
+                        <svg id="success-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981"
+                            stroke-width="2" class="hidden">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <div class="settings-title">Auto-Sync Settings</div>
+                    <div class="settings-list">
+                        <div class="settings-item">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e3a8a"
+                                stroke-width="2">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                            </svg>
+                            <span>Auto-detect solved problems</span>
+                        </div>
+                        <div class="settings-item">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e3a8a"
+                                stroke-width="2">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                            </svg>
+                            <span>Organize by difficulty</span>
+                        </div>
+                        <div class="settings-item">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e3a8a"
+                                stroke-width="2">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                            </svg>
+                            <span>Update on code changes</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="last-sync-display" class="last-sync hidden"></div>
+
+                <button id="test-sync" class="btn">Test Sync</button>
+
+                <div id="dashboard-message" class="message hidden"></div>
+            </div>
+        </div>
+
+        <footer>
+            Made by Dhruv with <a href="https://claude.ai" target="_blank">Claude</a>
+        </footer>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>
