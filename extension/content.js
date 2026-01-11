@@ -2,6 +2,7 @@
 
 let lastSubmittedCode = null;
 let currentProblemData = null;
+let isSubmitting = false;
 
 // Extract problem information from the page
 function extractProblemInfo() {
@@ -36,18 +37,36 @@ function extractProblemInfo() {
     }
 }
 
-// Extract the code from the editor
+// Extract the code from the editor - improved version
 function extractCode() {
     try {
-        // Try multiple selectors for different LeetCode layouts
-        const codeElements = document.querySelectorAll('.monaco-editor .view-line');
-        if (codeElements.length > 0) {
-            return Array.from(codeElements)
-                .map(line => line.textContent)
-                .join('\n');
+        // Method 1: Try to get from Monaco editor model
+        const editor = document.querySelector('.monaco-editor');
+        if (editor && window.monaco) {
+            const models = window.monaco.editor.getModels();
+            if (models && models.length > 0) {
+                // Get the first model (usually the main code editor)
+                return models[0].getValue();
+            }
         }
 
-        // Fallback to textarea if monaco editor not found
+        // Method 2: Extract from view lines
+        const codeElements = document.querySelectorAll('.monaco-editor .view-line');
+        if (codeElements.length > 0) {
+            const lines = Array.from(codeElements).map(line => {
+                // Get all spans within the line
+                const spans = line.querySelectorAll('span');
+                if (spans.length > 0) {
+                    return Array.from(spans)
+                        .map(span => span.textContent)
+                        .join('');
+                }
+                return line.textContent;
+            });
+            return lines.join('\n');
+        }
+
+        // Method 3: Fallback to textarea
         const textarea = document.querySelector('textarea[autocomplete="off"]');
         if (textarea) {
             return textarea.value;
@@ -60,18 +79,22 @@ function extractCode() {
     }
 }
 
-// Detect language from the editor
+// Detect language from the editor - fixed extension mapping
 function detectLanguage() {
     try {
+        // Try to find the language selector button
         const languageButton = document.querySelector('[id*="headlessui-listbox-button"]') ||
-            document.querySelector('.rounded-lg.px-3');
+            document.querySelector('button[class*="rounded"]');
 
         if (languageButton) {
-            const langText = languageButton.textContent.toLowerCase();
+            const langText = languageButton.textContent.toLowerCase().trim();
 
             const languageMap = {
                 'c++': 'cpp',
                 'cpp': 'cpp',
+                'c++14': 'cpp',
+                'c++17': 'cpp',
+                'c++20': 'cpp',
                 'java': 'java',
                 'python': 'py',
                 'python3': 'py',
@@ -79,16 +102,23 @@ function detectLanguage() {
                 'typescript': 'ts',
                 'c': 'c',
                 'c#': 'cs',
+                'csharp': 'cs',
                 'go': 'go',
+                'golang': 'go',
                 'rust': 'rs',
                 'kotlin': 'kt',
                 'swift': 'swift',
                 'ruby': 'rb',
-                'scala': 'scala'
+                'scala': 'scala',
+                'php': 'php',
+                'mysql': 'sql',
+                'mssql': 'sql',
+                'oracle': 'sql'
             };
 
             for (const [key, ext] of Object.entries(languageMap)) {
                 if (langText.includes(key)) {
+                    console.log('Detected language:', key, '-> extension:', ext);
                     return ext;
                 }
             }
@@ -101,22 +131,57 @@ function detectLanguage() {
     }
 }
 
-// Listen for successful submissions
+// Monitor for submit button clicks
+function monitorSubmitButton() {
+    // Find and monitor the submit button
+    const observer = new MutationObserver(() => {
+        const submitButton = document.querySelector('button[data-e2e-locator="console-submit-button"]') ||
+            Array.from(document.querySelectorAll('button')).find(btn =>
+                btn.textContent.trim().toLowerCase() === 'submit'
+            );
+
+        if (submitButton && !submitButton.dataset.monitored) {
+            submitButton.dataset.monitored = 'true';
+            submitButton.addEventListener('click', () => {
+                console.log('Submit button clicked');
+                isSubmitting = true;
+                // Store current code when submit is clicked
+                const currentCode = extractCode();
+                if (currentCode) {
+                    sessionStorage.setItem('leetcode_pending_code', currentCode);
+                    sessionStorage.setItem('leetcode_pending_language', detectLanguage());
+                }
+            });
+        }
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+}
+
+// Listen for successful submissions - improved detection
 function monitorSubmissions() {
     const observer = new MutationObserver((mutations) => {
+        if (!isSubmitting) return;
+
         mutations.forEach((mutation) => {
             mutation.addedNodes.forEach((node) => {
                 if (node.nodeType === 1) {
-                    // Check for success message
-                    const successText = node.textContent || '';
-                    if (successText.includes('Accepted') ||
-                        successText.includes('Success') ||
-                        node.querySelector('[data-e2e-locator="submission-result"]')) {
+                    // Check for the specific success indicator
+                    const isAccepted = node.textContent?.includes('Accepted') ||
+                        node.querySelector('[class*="text-green"]')?.textContent?.includes('Accepted') ||
+                        node.querySelector('[data-e2e-locator="submission-result"]')?.textContent?.includes('Accepted');
+
+                    if (isAccepted) {
+                        console.log('Accepted solution detected');
 
                         setTimeout(() => {
                             const problemInfo = extractProblemInfo();
-                            const code = extractCode();
-                            const language = detectLanguage();
+                            // Get the code that was stored when submit was clicked
+                            const code = sessionStorage.getItem('leetcode_pending_code') || extractCode();
+                            const language = sessionStorage.getItem('leetcode_pending_language') || detectLanguage();
 
                             if (problemInfo && code) {
                                 const submissionData = {
@@ -126,8 +191,8 @@ function monitorSubmissions() {
                                     timestamp: new Date().toISOString()
                                 };
 
-                                // Check if code has changed
-                                const codeHash = btoa(code).slice(0, 50);
+                                // Check if code has changed from last submission
+                                const codeHash = btoa(unescape(encodeURIComponent(code))).slice(0, 50);
                                 if (codeHash !== lastSubmittedCode) {
                                     lastSubmittedCode = codeHash;
 
@@ -137,10 +202,20 @@ function monitorSubmissions() {
                                         data: submissionData
                                     });
 
-                                    console.log('LeetCode solution detected:', submissionData);
+                                    console.log('LeetCode solution detected and sent:', {
+                                        problem: submissionData.fullTitle,
+                                        language: language,
+                                        codeLength: code.length
+                                    });
                                 }
+
+                                // Clear pending code
+                                sessionStorage.removeItem('leetcode_pending_code');
+                                sessionStorage.removeItem('leetcode_pending_language');
                             }
-                        }, 1000);
+
+                            isSubmitting = false;
+                        }, 1500); // Wait for submission result to fully load
                     }
                 }
             });
@@ -159,6 +234,7 @@ function init() {
     if (currentProblemData) {
         console.log('LeetCode GitHub Sync: Monitoring problem', currentProblemData.fullTitle);
     }
+    monitorSubmitButton();
     monitorSubmissions();
 }
 
@@ -176,6 +252,8 @@ new MutationObserver(() => {
     if (url !== lastUrl) {
         lastUrl = url;
         if (url.includes('/problems/')) {
+            isSubmitting = false;
+            lastSubmittedCode = null;
             setTimeout(init, 1000);
         }
     }
