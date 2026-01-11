@@ -1,4 +1,4 @@
-// Content script to monitor LeetCode submissions - FIXED VERSION
+// Content script to monitor LeetCode submissions - FULLY FIXED
 
 let lastSubmittedCode = null;
 let isSubmitting = false;
@@ -33,198 +33,181 @@ function waitForElement(selector, timeout = 10000) {
     });
 }
 
-// Extract problem information from the page
+// Extract problem information - FIXED NUMBER EXTRACTION
 async function extractProblemInfo() {
     console.log('📋 Attempting to extract problem info...');
-
+    
     try {
-        // Wait for title element to appear
-        const titleElement = await waitForElement('[data-cy="question-title"], .text-title-large, div[class*="text-title"], a[href*="/problems/"]', 5000);
-
+        // Wait for title element
+        const titleElement = await waitForElement('[data-cy="question-title"], .text-title-large, div[class*="text-title"]', 5000);
+        
         if (!titleElement) {
-            console.error('❌ Could not find title element after waiting');
-
-            // Fallback: extract from URL
-            const urlMatch = window.location.pathname.match(/\/problems\/([^\/]+)/);
-            if (urlMatch) {
-                const slug = urlMatch[1];
-                const problemName = slug.split('-').map(w =>
-                    w.charAt(0).toUpperCase() + w.slice(1)
-                ).join('');
-
-                console.log('⚠️ Using URL-based fallback');
-                return {
-                    number: '0',
-                    name: problemName,
-                    difficulty: 'medium',
-                    fullTitle: problemName
-                };
-            }
+            console.error('❌ Title element not found');
             return null;
         }
 
         const title = titleElement.textContent.trim();
         console.log('📌 Found title:', title);
-
+        
         // Extract problem number and name
         let problemNumber = '';
         let problemName = '';
-
+        
+        // Parse "802. Find Eventual Safe States" format
         if (title.includes('.')) {
-            const parts = title.split('.');
-            problemNumber = parts[0].trim();
-            problemName = parts.slice(1).join('.').trim();
+            const dotIndex = title.indexOf('.');
+            problemNumber = title.substring(0, dotIndex).trim();
+            problemName = title.substring(dotIndex + 1).trim();
+            console.log('📝 Parsed - Number:', problemNumber, 'Name:', problemName);
         } else {
-            // Extract from URL
-            const urlMatch = window.location.pathname.match(/\/problems\/([^\/]+)/);
-            if (urlMatch) {
-                const slug = urlMatch[1];
-                problemName = slug.split('-').map(w =>
-                    w.charAt(0).toUpperCase() + w.slice(1)
-                ).join('');
-            }
+            // Fallback
             const numberMatch = title.match(/^(\d+)/);
             problemNumber = numberMatch ? numberMatch[1] : '0';
+            problemName = title.replace(/^\d+\.?\s*/, '');
         }
 
-        // Extract difficulty - try multiple methods
+        // Extract difficulty
         let difficulty = 'medium';
-
-        // Method 1: Look for difficulty attribute
-        let difficultyElement = document.querySelector('[diff]');
-
-        // Method 2: Look for class-based difficulty
-        if (!difficultyElement) {
-            difficultyElement = document.querySelector('.text-difficulty-easy, .text-difficulty-medium, .text-difficulty-hard');
-        }
-
-        // Method 3: Look for any element containing just difficulty text
-        if (!difficultyElement) {
-            difficultyElement = Array.from(document.querySelectorAll('div, span')).find(el => {
+        
+        const difficultyElement = document.querySelector('[diff]') ||
+            document.querySelector('.text-difficulty-easy, .text-difficulty-medium, .text-difficulty-hard') ||
+            Array.from(document.querySelectorAll('div, span')).find(el => {
                 const text = el.textContent.toLowerCase().trim();
-                return (text === 'easy' || text === 'medium' || text === 'hard') &&
-                    el.textContent.length < 10;
+                return (text === 'easy' || text === 'medium' || text === 'hard') && el.textContent.length < 10;
             });
-        }
 
         if (difficultyElement) {
             const diffText = difficultyElement.textContent.toLowerCase();
-            console.log('🎯 Found difficulty text:', diffText);
+            console.log('🎯 Difficulty:', diffText);
             if (diffText.includes('easy')) difficulty = 'easy';
             else if (diffText.includes('hard')) difficulty = 'hard';
             else if (diffText.includes('medium')) difficulty = 'medium';
-        } else {
-            console.warn('⚠️ Could not find difficulty, using default: medium');
         }
 
-        // Clean problem name
+        // Clean problem name for filename
         const cleanName = problemName
-            .replace(/[^a-zA-Z0-9\s-]/g, '')
+            .replace(/[^a-zA-Z0-9\s]/g, '')
             .replace(/\s+/g, '')
             .trim();
 
         const result = {
             number: problemNumber,
-            name: cleanName || 'Problem',
+            name: cleanName,
             difficulty: difficulty,
             fullTitle: title
         };
 
-        console.log('✅ Extracted problem info:', result);
+        console.log('✅ Extracted:', result);
         return result;
-
+        
     } catch (error) {
         console.error('❌ Error extracting problem info:', error);
         return null;
     }
 }
 
-// Extract code from Monaco editor - IMPROVED
+// Extract COMPLETE code from Monaco - COMPLETELY REWRITTEN
 function extractCode() {
-    console.log('💻 Attempting to extract code...');
-
+    console.log('💻 Extracting code...');
+    
     try {
-        // Method 1: Monaco API (most reliable for complete code)
+        // PRIMARY METHOD: Monaco API
         if (window.monaco && window.monaco.editor) {
-            console.log('🔍 Trying Monaco API...');
-            const editors = window.monaco.editor.getEditors();
-
-            // Try all editors, find the one with actual code
-            for (const editor of editors) {
-                const model = editor.getModel();
-                if (model) {
-                    const code = model.getValue();
-                    if (code && code.trim().length > 10) {
-                        console.log('✅ Code extracted via Monaco editor (' + code.length + ' chars)');
-                        return code;
+            console.log('🔍 Using Monaco API...');
+            
+            // Try getEditors first
+            try {
+                const editors = window.monaco.editor.getEditors();
+                console.log('Found', editors.length, 'editors');
+                
+                for (const editor of editors) {
+                    try {
+                        const model = editor.getModel();
+                        if (model) {
+                            const code = model.getValue();
+                            if (code && code.length > 20) {
+                                console.log('✅ Extracted from editor (' + code.length + ' chars)');
+                                console.log('First 100 chars:', code.substring(0, 100));
+                                return code;
+                            }
+                        }
+                    } catch (e) {
+                        continue;
                     }
                 }
+            } catch (e) {
+                console.log('getEditors failed:', e.message);
             }
-
-            // Fallback to getModels
-            const models = window.monaco.editor.getModels();
-            if (models && models.length > 0) {
+            
+            // Try getModels
+            try {
+                const models = window.monaco.editor.getModels();
+                console.log('Found', models.length, 'models');
+                
                 for (const model of models) {
-                    const code = model.getValue();
-                    if (code && code.trim().length > 10) {
-                        console.log('✅ Code extracted via Monaco model (' + code.length + ' chars)');
-                        return code;
+                    try {
+                        const code = model.getValue();
+                        if (code && code.length > 20) {
+                            console.log('✅ Extracted from model (' + code.length + ' chars)');
+                            console.log('First 100 chars:', code.substring(0, 100));
+                            return code;
+                        }
+                    } catch (e) {
+                        continue;
                     }
                 }
+            } catch (e) {
+                console.log('getModels failed:', e.message);
             }
-        } else {
-            console.warn('⚠️ Monaco not available');
         }
 
-        // Method 2: Extract from DOM - get ALL text content
+        // FALLBACK: DOM extraction with better text extraction
         console.log('🔍 Trying DOM extraction...');
-        const editorContainer = document.querySelector('.monaco-editor') ||
-            document.querySelector('[class*="editor"]');
-
-        if (editorContainer) {
-            const viewLines = editorContainer.querySelectorAll('.view-line');
-            if (viewLines.length > 0) {
-                const lines = Array.from(viewLines).map(line => {
-                    // Get all text nodes
-                    return line.textContent || '';
-                });
-                const code = lines.join('\n');
-                if (code && code.trim().length > 10) {
-                    console.log('✅ Code extracted via DOM (' + code.length + ' chars)');
-                    return code;
-                }
+        const viewLines = document.querySelectorAll('.view-line');
+        console.log('Found', viewLines.length, 'view lines');
+        
+        if (viewLines.length > 0) {
+            const lines = [];
+            viewLines.forEach(line => {
+                // Get the raw text content
+                const lineText = line.textContent;
+                lines.push(lineText);
+            });
+            
+            const code = lines.join('\n');
+            if (code && code.length > 20) {
+                console.log('✅ Extracted from DOM (' + code.length + ' chars)');
+                console.log('First 100 chars:', code.substring(0, 100));
+                return code;
             }
         }
 
-        console.error('❌ Could not extract code');
+        console.error('❌ No code found');
         return null;
-
+        
     } catch (error) {
-        console.error('❌ Error extracting code:', error);
+        console.error('❌ Extraction error:', error);
         return null;
     }
 }
 
-// Detect programming language - FIXED
+// Detect language
 function detectLanguage() {
     console.log('🔤 Detecting language...');
-
+    
     try {
-        // Look for the language selector - it's usually a button with a dropdown
-        // Try to find the button that shows the current language
         const buttons = Array.from(document.querySelectorAll('button'));
-
-        // Filter buttons that might contain language names
+        
         const languageButton = buttons.find(btn => {
             const text = btn.textContent;
             return text.match(/C\+\+|Java|Python|JavaScript|TypeScript|Go|Rust|C#|Ruby|Swift|Kotlin|Scala|PHP/i) &&
-                !text.includes('Description') &&
-                text.length < 30;
+                   !text.includes('Description') &&
+                   text.length < 30;
         });
 
         if (languageButton) {
             const langText = languageButton.textContent.toLowerCase().trim();
-            console.log('🔤 Found language button text:', langText);
+            console.log('🔤 Language text:', langText);
 
             const languageMap = {
                 'c++': 'cpp', 'cpp': 'cpp',
@@ -245,41 +228,30 @@ function detectLanguage() {
 
             for (const [key, ext] of Object.entries(languageMap)) {
                 if (langText.includes(key)) {
-                    console.log('✅ Detected:', key, '→', ext);
+                    console.log('✅ Detected:', ext);
                     return ext;
                 }
             }
         }
 
-        // Fallback: check for syntax in the code itself
-        console.log('🔍 Trying syntax-based detection...');
-        const code = extractCode();
-        if (code) {
-            if (code.includes('class ') && code.includes('public:')) return 'cpp';
-            if (code.includes('public class')) return 'java';
-            if (code.includes('def ') && code.includes(':')) return 'py';
-            if (code.includes('function ') || code.includes('=>')) return 'js';
-            if (code.includes('func ') && code.includes('->')) return 'swift';
-        }
-
-        console.warn('⚠️ Using default: cpp');
+        console.warn('⚠️ Default: cpp');
         return 'cpp';
-
+        
     } catch (error) {
-        console.error('❌ Error detecting language:', error);
+        console.error('❌ Error:', error);
         return 'cpp';
     }
 }
 
 // Monitor submit button
 function monitorSubmitButton() {
-    console.log('👀 Setting up submit button monitor...');
-
+    console.log('👀 Monitoring submit button...');
+    
     let submitButtonFound = false;
-
+    
     const observer = new MutationObserver(() => {
         if (submitButtonFound) return;
-
+        
         const submitButton = document.querySelector('button[data-e2e-locator="console-submit-button"]') ||
             Array.from(document.querySelectorAll('button')).find(btn =>
                 btn.textContent.trim().toLowerCase() === 'submit'
@@ -288,34 +260,36 @@ function monitorSubmitButton() {
         if (submitButton && !submitButton.dataset.monitored) {
             submitButton.dataset.monitored = 'true';
             submitButtonFound = true;
-            console.log('✅ Submit button found and monitored');
-
+            console.log('✅ Submit button monitored');
+            
             submitButton.addEventListener('click', async () => {
-                console.log('🔔 SUBMIT BUTTON CLICKED!');
+                console.log('🔔 SUBMIT CLICKED!');
                 isSubmitting = true;
-
-                // Wait a bit for Monaco to update
-                await new Promise(resolve => setTimeout(resolve, 200));
-
+                
+                // Wait for Monaco to update
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
                 const currentCode = extractCode();
                 const currentLang = detectLanguage();
                 const currentProblem = await extractProblemInfo();
-
-                console.log('📦 Captured:', {
-                    hasCode: !!currentCode,
-                    codeLength: currentCode?.length || 0,
-                    hasLang: !!currentLang,
-                    language: currentLang,
-                    hasProblem: !!currentProblem
-                });
-
+                
+                console.log('📦 Captured data:');
+                console.log('  - Code length:', currentCode?.length || 0);
+                console.log('  - Language:', currentLang);
+                console.log('  - Problem:', currentProblem?.fullTitle);
+                console.log('  - Number:', currentProblem?.number);
+                
                 if (currentCode && currentLang && currentProblem) {
                     sessionStorage.setItem('leetcode_pending_code', currentCode);
                     sessionStorage.setItem('leetcode_pending_language', currentLang);
                     sessionStorage.setItem('leetcode_pending_problem', JSON.stringify(currentProblem));
                     console.log('💾 Saved to sessionStorage');
                 } else {
-                    console.error('❌ Missing data on submit!');
+                    console.error('❌ Missing data!', {
+                        hasCode: !!currentCode,
+                        hasLang: !!currentLang,
+                        hasProblem: !!currentProblem
+                    });
                 }
             });
         }
@@ -329,30 +303,30 @@ function monitorSubmitButton() {
 
 // Monitor for accepted submissions
 function monitorSubmissions() {
-    console.log('👀 Setting up submission monitor...');
-
+    console.log('👀 Monitoring submissions...');
+    
     const observer = new MutationObserver((mutations) => {
         if (!isSubmitting) return;
 
         for (const mutation of mutations) {
             for (const node of mutation.addedNodes) {
                 if (node.nodeType !== 1) continue;
-
+                
                 const text = node.textContent || '';
                 const isAccepted = text.includes('Accepted') ||
                     node.querySelector?.('[class*="text-green"]')?.textContent?.includes('Accepted') ||
                     node.querySelector?.('[class*="success"]')?.textContent?.includes('Accepted');
 
                 if (isAccepted) {
-                    console.log('🎉 ACCEPTED DETECTED!');
-
+                    console.log('🎉 ACCEPTED!');
+                    
                     setTimeout(async () => {
-                        console.log('⏱️ Processing...');
-
+                        console.log('⏱️ Processing submission...');
+                        
                         let code = sessionStorage.getItem('leetcode_pending_code');
                         let language = sessionStorage.getItem('leetcode_pending_language');
                         let problemJson = sessionStorage.getItem('leetcode_pending_problem');
-
+                        
                         let problemInfo = null;
                         if (problemJson) {
                             try {
@@ -361,22 +335,29 @@ function monitorSubmissions() {
                                 console.error('Parse error:', e);
                             }
                         }
-
-                        // Fallback extraction
+                        
+                        // Re-extract if needed
                         if (!problemInfo) {
-                            console.log('⚠️ Re-extracting problem info...');
+                            console.log('Re-extracting problem...');
                             problemInfo = await extractProblemInfo();
                         }
                         if (!code) {
-                            console.log('⚠️ Re-extracting code...');
+                            console.log('Re-extracting code...');
                             code = extractCode();
                         }
                         if (!language) {
-                            console.log('⚠️ Re-detecting language...');
+                            console.log('Re-detecting language...');
                             language = detectLanguage();
                         }
 
-                        if (problemInfo && code && language) {
+                        console.log('📊 Final data check:');
+                        console.log('  - Problem number:', problemInfo?.number);
+                        console.log('  - Problem name:', problemInfo?.name);
+                        console.log('  - Difficulty:', problemInfo?.difficulty);
+                        console.log('  - Language:', language);
+                        console.log('  - Code length:', code?.length);
+
+                        if (problemInfo && code && language && code.length > 20) {
                             const submissionData = {
                                 ...problemInfo,
                                 code: code,
@@ -384,13 +365,7 @@ function monitorSubmissions() {
                                 timestamp: new Date().toISOString()
                             };
 
-                            console.log('📤 Sending:', {
-                                problem: submissionData.fullTitle,
-                                number: submissionData.number,
-                                difficulty: submissionData.difficulty,
-                                language: language,
-                                codeLength: code.length
-                            });
+                            console.log('📤 Sending to background...');
 
                             const codeHash = btoa(code).slice(0, 50);
                             if (codeHash !== lastSubmittedCode) {
@@ -406,24 +381,21 @@ function monitorSubmissions() {
                                         console.log('✅ Sent successfully!');
                                     }
                                 });
-                            } else {
-                                console.log('⏭️ Duplicate, skipping');
                             }
 
-                            sessionStorage.removeItem('leetcode_pending_code');
-                            sessionStorage.removeItem('leetcode_pending_language');
-                            sessionStorage.removeItem('leetcode_pending_problem');
+                            sessionStorage.clear();
                         } else {
-                            console.error('❌ Missing data:', {
-                                problem: !!problemInfo,
-                                code: !!code,
-                                lang: !!language
+                            console.error('❌ Invalid data:', {
+                                hasProblem: !!problemInfo,
+                                hasCode: !!code,
+                                codeLength: code?.length,
+                                hasLang: !!language
                             });
                         }
 
                         isSubmitting = false;
                     }, 2000);
-
+                    
                     break;
                 }
             }
@@ -436,47 +408,43 @@ function monitorSubmissions() {
     });
 }
 
-// Initialize with retries
+// Initialize
 async function init() {
-    console.log('🔧 Initializing... (attempt ' + (initAttempts + 1) + ')');
-
+    console.log('🔧 Init (attempt ' + (initAttempts + 1) + ')');
+    
     const problemInfo = await extractProblemInfo();
-
+    
     if (problemInfo) {
         console.log('🎯 Monitoring:', problemInfo.fullTitle);
         monitorSubmitButton();
         monitorSubmissions();
-        console.log('✅ Initialization complete!');
+        console.log('✅ Ready!');
         return true;
     } else {
         initAttempts++;
         if (initAttempts < MAX_INIT_ATTEMPTS) {
-            console.log('⏳ Retrying in 2s...');
+            console.log('⏳ Retry in 2s...');
             setTimeout(init, 2000);
-        } else {
-            console.error('❌ Max init attempts reached');
         }
         return false;
     }
 }
 
-// Start initialization
+// Start
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(init, 1000);
-    });
+    document.addEventListener('DOMContentLoaded', () => setTimeout(init, 1000));
 } else {
     setTimeout(init, 1000);
 }
 
-// Handle SPA navigation
+// Handle navigation
 let lastUrl = location.href;
 new MutationObserver(() => {
     const url = location.href;
     if (url !== lastUrl) {
         lastUrl = url;
         if (url.includes('/problems/')) {
-            console.log('🔄 Page changed, reinitializing...');
+            console.log('🔄 Page changed');
             isSubmitting = false;
             lastSubmittedCode = null;
             initAttempts = 0;
@@ -485,4 +453,4 @@ new MutationObserver(() => {
     }
 }).observe(document, { subtree: true, childList: true });
 
-console.log('✅ Content script ready');
+console.log('✅ Script ready');
