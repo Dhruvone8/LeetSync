@@ -194,9 +194,10 @@ async function extractProblemInfo() {
 
         // Clean problem name for filename
         const cleanName = problemName
-            .replace(/[^a-zA-Z0-9\s]/g, '')
-            .replace(/\s+/g, '')
-            .trim();
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '');
+
 
         const result = {
             number: problemNumber,
@@ -338,25 +339,27 @@ function detectLanguage() {
         });
 
         if (languageButton) {
-            const langText = languageButton.textContent.toLowerCase().trim();
+            const langText = languageButton.textContent
+                .toLowerCase()
+                .replace(/\(.*?\)/g, '') // removes things like "(Python3)" or "(GCC)"
+                .trim();
+
             console.log('🔤 Language text:', langText);
 
             const languageMap = {
-                'c++': 'cpp', 'cpp': 'cpp',
+                'c++': 'cpp',
+                'python': 'py',
+                'python3': 'py',
                 'java': 'java',
-                'python': 'py', 'python3': 'py',
                 'javascript': 'js',
                 'typescript': 'ts',
-                'c#': 'cs', 'csharp': 'cs',
-                'go': 'go', 'golang': 'go',
+                'c#': 'cs',
+                'go': 'go',
                 'rust': 'rs',
                 'kotlin': 'kt',
-                'swift': 'swift',
-                'ruby': 'rb',
-                'scala': 'scala',
-                'php': 'php',
-                'c': 'c'
+                'swift': 'swift'
             };
+
 
             for (const [key, ext] of Object.entries(languageMap)) {
                 if (langText.includes(key)) {

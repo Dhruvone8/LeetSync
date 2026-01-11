@@ -75,9 +75,10 @@ async function syncToGitHub(submissionData, token, repo) {
     console.log('  Language:', language);
 
     // Generate filename: Number-Name.extension
-    const sanitizedName = name.replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-    const filename = `${number}-${sanitizedName}.${language}`;
-    const path = `${difficulty}/${filename}`;
+    const filename = `${number}-${name}.${language}`;
+    const normalizedDifficulty = difficulty.toLowerCase();
+    const path = `${normalizedDifficulty}/${filename}`;
+
 
     console.log('📄 Path:', path);
 
