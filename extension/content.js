@@ -1,4 +1,4 @@
-// Content script to monitor LeetCode submissions - FULLY FIXED
+// Content script to monitor LeetCode submissions - FIXED WITH MAIN WORLD INJECTION
 
 let lastSubmittedCode = null;
 let isSubmitting = false;
@@ -6,6 +6,114 @@ let initAttempts = 0;
 const MAX_INIT_ATTEMPTS = 10;
 
 console.log('🚀 LeetCode GitHub Sync Extension Loaded');
+
+// Inject code extractor into page's main world to access Monaco
+function injectCodeExtractor() {
+    // Check if already injected
+    if (document.getElementById('leetcode-sync-injected')) {
+        return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'leetcode-sync-injected';
+    script.textContent = `
+        (function() {
+            // Function to extract code from Monaco editor
+            window.__leetcodeSyncExtractCode = function() {
+                console.log('🔍 [Injected] Extracting code from Monaco...');
+                
+                try {
+                    if (window.monaco && window.monaco.editor) {
+                        // Try getEditors first - GET THE LONGEST CODE
+                        try {
+                            const editors = window.monaco.editor.getEditors();
+                            console.log('[Injected] Found', editors.length, 'editors');
+                            
+                            let longestCode = '';
+                            
+                            for (let i = 0; i < editors.length; i++) {
+                                try {
+                                    const editor = editors[i];
+                                    const model = editor.getModel();
+                                    if (model) {
+                                        const code = model.getValue();
+                                        console.log('[Injected] Editor ' + i + ' length:', code.length);
+                                        
+                                        if (code && code.length > longestCode.length) {
+                                            longestCode = code;
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.log('[Injected] Editor ' + i + ' error:', e.message);
+                                    continue;
+                                }
+                            }
+                            
+                            if (longestCode.length > 20) {
+                                console.log('[Injected] ✅ Extracted from getEditors (' + longestCode.length + ' chars)');
+                                return longestCode;
+                            }
+                        } catch (e) {
+                            console.log('[Injected] getEditors failed:', e.message);
+                        }
+                        
+                        // Try getModels
+                        try {
+                            const models = window.monaco.editor.getModels();
+                            console.log('[Injected] Found', models.length, 'models');
+                            
+                            let longestCode = '';
+                            
+                            for (let i = 0; i < models.length; i++) {
+                                try {
+                                    const model = models[i];
+                                    const code = model.getValue();
+                                    console.log('[Injected] Model ' + i + ' length:', code.length);
+                                    
+                                    if (code && code.length > longestCode.length) {
+                                        longestCode = code;
+                                    }
+                                } catch (e) {
+                                    console.log('[Injected] Model ' + i + ' error:', e.message);
+                                    continue;
+                                }
+                            }
+                            
+                            if (longestCode.length > 20) {
+                                console.log('[Injected] ✅ Extracted from getModels (' + longestCode.length + ' chars)');
+                                return longestCode;
+                            }
+                        } catch (e) {
+                            console.log('[Injected] getModels failed:', e.message);
+                        }
+                    } else {
+                        console.log('[Injected] Monaco not available');
+                    }
+                } catch (error) {
+                    console.error('[Injected] Error:', error);
+                }
+                
+                return null;
+            };
+            
+            // Listen for extraction requests from content script
+            window.addEventListener('leetcode-sync-extract-code', function(e) {
+                const requestId = e.detail.requestId;
+                const code = window.__leetcodeSyncExtractCode();
+                
+                // Send response back
+                window.dispatchEvent(new CustomEvent('leetcode-sync-code-response', {
+                    detail: { requestId: requestId, code: code }
+                }));
+            });
+            
+            console.log('✅ [Injected] LeetCode Sync code extractor ready');
+        })();
+    `;
+
+    (document.head || document.documentElement).appendChild(script);
+    console.log('✅ Injected code extractor into main world');
+}
 
 // Wait for element to appear
 function waitForElement(selector, timeout = 10000) {
@@ -106,109 +214,111 @@ async function extractProblemInfo() {
     }
 }
 
-// Extract COMPLETE code from Monaco - FIXED TO GET LONGEST CODE
+// Extract code using injected script (main world) with fallback to DOM
 function extractCode() {
-    console.log('💻 Extracting code...');
+    return new Promise((resolve) => {
+        console.log('💻 Extracting code...');
+
+        const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        let resolved = false;
+
+        // Set up listener for response from injected script
+        const responseHandler = (e) => {
+            if (e.detail.requestId === requestId && !resolved) {
+                resolved = true;
+                window.removeEventListener('leetcode-sync-code-response', responseHandler);
+
+                const code = e.detail.code;
+                if (code && code.length > 20) {
+                    console.log('✅ Got code from injected script (' + code.length + ' chars)');
+                    resolve(code);
+                } else {
+                    console.log('⚠️ Injected script returned no code, trying DOM fallback...');
+                    resolve(extractCodeFromDOM());
+                }
+            }
+        };
+
+        window.addEventListener('leetcode-sync-code-response', responseHandler);
+
+        // Send extraction request to injected script
+        window.dispatchEvent(new CustomEvent('leetcode-sync-extract-code', {
+            detail: { requestId: requestId }
+        }));
+
+        // Timeout fallback after 1 second
+        setTimeout(() => {
+            if (!resolved) {
+                resolved = true;
+                window.removeEventListener('leetcode-sync-code-response', responseHandler);
+                console.log('⚠️ Injected script timeout, trying DOM fallback...');
+                resolve(extractCodeFromDOM());
+            }
+        }, 1000);
+    });
+}
+
+// DOM-based code extraction fallback
+function extractCodeFromDOM() {
+    console.log('🔍 Trying DOM extraction...');
 
     try {
-        // PRIMARY METHOD: Monaco API
-        if (window.monaco && window.monaco.editor) {
-            console.log('🔍 Using Monaco API...');
-
-            // Try getEditors first - GET THE LONGEST CODE (skip empty editors)
-            try {
-                const editors = window.monaco.editor.getEditors();
-                console.log('Found', editors.length, 'editors');
-
-                let longestCode = '';
-
-                for (let i = 0; i < editors.length; i++) {
-                    try {
-                        const editor = editors[i];
-                        const model = editor.getModel();
-                        if (model) {
-                            const code = model.getValue();
-                            console.log(`Editor ${i} length:`, code.length);
-
-                            // Keep the longest code (actual solution, not empty editor)
-                            if (code && code.length > longestCode.length) {
-                                longestCode = code;
-                            }
-                        }
-                    } catch (e) {
-                        console.log(`Editor ${i} error:`, e.message);
-                        continue;
-                    }
-                }
-
-                if (longestCode.length > 20) {
-                    console.log('✅ Extracted longest code (' + longestCode.length + ' chars)');
-                    console.log('First 100 chars:', longestCode.substring(0, 100));
-                    return longestCode;
-                }
-            } catch (e) {
-                console.log('getEditors failed:', e.message);
-            }
-
-            // Try getModels - GET THE LONGEST CODE
-            try {
-                const models = window.monaco.editor.getModels();
-                console.log('Found', models.length, 'models');
-
-                let longestCode = '';
-
-                for (let i = 0; i < models.length; i++) {
-                    try {
-                        const model = models[i];
-                        const code = model.getValue();
-                        console.log(`Model ${i} length:`, code.length);
-
-                        // Keep the longest code
-                        if (code && code.length > longestCode.length) {
-                            longestCode = code;
-                        }
-                    } catch (e) {
-                        console.log(`Model ${i} error:`, e.message);
-                        continue;
-                    }
-                }
-
-                if (longestCode.length > 20) {
-                    console.log('✅ Extracted longest model code (' + longestCode.length + ' chars)');
-                    console.log('First 100 chars:', longestCode.substring(0, 100));
-                    return longestCode;
-                }
-            } catch (e) {
-                console.log('getModels failed:', e.message);
-            }
-        }
-
-        // FALLBACK: DOM extraction with better text extraction
-        console.log('🔍 Trying DOM extraction...');
+        // Method 1: Monaco view-lines
         const viewLines = document.querySelectorAll('.view-line');
         console.log('Found', viewLines.length, 'view lines');
 
         if (viewLines.length > 0) {
             const lines = [];
             viewLines.forEach(line => {
-                // Get the raw text content
                 const lineText = line.textContent;
                 lines.push(lineText);
             });
 
             const code = lines.join('\n');
             if (code && code.length > 20) {
-                console.log('✅ Extracted from DOM (' + code.length + ' chars)');
-                console.log('First 100 chars:', code.substring(0, 100));
+                console.log('✅ Extracted from view-lines (' + code.length + ' chars)');
                 return code;
             }
         }
 
-        console.error('❌ No code found');
+        // Method 2: Monaco lines-content
+        const linesContent = document.querySelector('.lines-content');
+        if (linesContent) {
+            const code = linesContent.textContent;
+            if (code && code.length > 20) {
+                console.log('✅ Extracted from lines-content (' + code.length + ' chars)');
+                return code;
+            }
+        }
+
+        // Method 3: CodeMirror (older LeetCode versions)
+        const codeMirror = document.querySelector('.CodeMirror-code');
+        if (codeMirror) {
+            const lines = [];
+            codeMirror.querySelectorAll('.CodeMirror-line').forEach(line => {
+                lines.push(line.textContent);
+            });
+            const code = lines.join('\n');
+            if (code && code.length > 20) {
+                console.log('✅ Extracted from CodeMirror (' + code.length + ' chars)');
+                return code;
+            }
+        }
+
+        // Method 4: Textarea fallback
+        const textareas = document.querySelectorAll('textarea');
+        for (const textarea of textareas) {
+            if (textarea.value && textarea.value.length > 20) {
+                console.log('✅ Extracted from textarea (' + textarea.value.length + ' chars)');
+                return textarea.value;
+            }
+        }
+
+        console.error('❌ No code found via DOM extraction');
         return null;
 
     } catch (error) {
-        console.error('❌ Extraction error:', error);
+        console.error('❌ DOM extraction error:', error);
         return null;
     }
 }
@@ -291,7 +401,7 @@ function monitorSubmitButton() {
                 // Wait for Monaco to update
                 await new Promise(resolve => setTimeout(resolve, 300));
 
-                const currentCode = extractCode();
+                const currentCode = await extractCode();
                 const currentLang = detectLanguage();
                 const currentProblem = await extractProblemInfo();
 
@@ -389,7 +499,7 @@ function monitorSubmissions() {
                             console.log('Re-extracting code...');
                             for (let attempt = 0; attempt < 3; attempt++) {
                                 await new Promise(resolve => setTimeout(resolve, 500));
-                                code = extractCode();
+                                code = await extractCode();
                                 if (code && code.length > 20) {
                                     console.log(`✅ Got code on attempt ${attempt + 1}`);
                                     break;
@@ -465,6 +575,9 @@ function monitorSubmissions() {
 // Initialize
 async function init() {
     console.log('🔧 Init (attempt ' + (initAttempts + 1) + ')');
+
+    // Inject code extractor into main world first
+    injectCodeExtractor();
 
     const problemInfo = await extractProblemInfo();
 
