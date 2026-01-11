@@ -23,6 +23,8 @@ const successIcon = document.getElementById('success-icon');
 let isAuthenticating = false;
 let isSaving = false;
 let isSyncing = false;
+let authWindow = null;
+let authCheckInterval = null;
 
 // Initialize
 async function init() {
@@ -70,28 +72,40 @@ function showMessage(text, isSuccess = false, isDashboard = false) {
     }, 3000);
 }
 
+// Cleanup auth window checker
+function cleanupAuthCheck() {
+    if (authCheckInterval) {
+        clearInterval(authCheckInterval);
+        authCheckInterval = null;
+    }
+}
+
 // Connect GitHub
 connectGithubBtn.addEventListener('click', async () => {
     if (isAuthenticating) return;
 
     isAuthenticating = true;
     connectGithubBtn.innerHTML = `
-    <div class="spinner"></div>
-    <span>Authenticating...</span>
-  `;
+        <div class="spinner"></div>
+        <span>Authenticating...</span>
+    `;
     connectGithubBtn.disabled = true;
 
     try {
+        // Clean up any existing checker
+        cleanupAuthCheck();
+
         // Open OAuth window
-        const authWindow = window.open(
+        authWindow = window.open(
             `${SERVER_URL}/auth/github`,
             'GitHub Authorization',
             'width=600,height=700'
         );
 
-        // Listen for auth success
-        window.addEventListener('message', async (event) => {
-            if (event.data.type === 'GITHUB_AUTH_SUCCESS') {
+        // Listen for auth success message
+        const messageHandler = async (event) => {
+            // Verify the message is from our auth process
+            if (event.data && event.data.type === 'GITHUB_AUTH_SUCCESS') {
                 const { token, username } = event.data;
 
                 await chrome.storage.local.set({
@@ -103,45 +117,65 @@ connectGithubBtn.addEventListener('click', async () => {
                 repoStep.classList.remove('hidden');
                 showMessage('Authentication successful!', true);
 
+                // Cleanup
+                window.removeEventListener('message', messageHandler);
+                cleanupAuthCheck();
+
+                if (authWindow && !authWindow.closed) {
+                    authWindow.close();
+                }
+
+                // Reset button state
                 isAuthenticating = false;
                 connectGithubBtn.innerHTML = `
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
-          </svg>
-          <span>Connect with GitHub</span>
-        `;
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+                    </svg>
+                    <span>Connect with GitHub</span>
+                `;
                 connectGithubBtn.disabled = false;
-
-                authWindow.close();
             }
-        });
+        };
 
-        // Check if window was closed
-        const checkClosed = setInterval(() => {
-            if (authWindow.closed) {
-                clearInterval(checkClosed);
+        window.addEventListener('message', messageHandler);
+
+        // Check if window exists using a safer method
+        // We can't check authWindow.closed due to COOP, so we'll use a timeout
+        let checkAttempts = 0;
+        const maxAttempts = 60; // 60 seconds timeout
+
+        authCheckInterval = setInterval(() => {
+            checkAttempts++;
+
+            // If we've been waiting too long, assume user closed window
+            if (checkAttempts >= maxAttempts) {
                 if (isAuthenticating) {
+                    cleanupAuthCheck();
+                    window.removeEventListener('message', messageHandler);
                     isAuthenticating = false;
                     connectGithubBtn.innerHTML = `
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
-            </svg>
-            <span>Connect with GitHub</span>
-          `;
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+                        </svg>
+                        <span>Connect with GitHub</span>
+                    `;
                     connectGithubBtn.disabled = false;
+                    showMessage('Authentication cancelled or timed out');
                 }
             }
-        }, 500);
+        }, 1000);
+
     } catch (error) {
         console.error('Auth error:', error);
         showMessage('Authentication failed. Please try again.');
+        cleanupAuthCheck();
         isAuthenticating = false;
         connectGithubBtn.innerHTML = `
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
-      </svg>
-      <span>Connect with GitHub</span>
-    `;
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+            </svg>
+            <span>Connect with GitHub</span>
+        `;
         connectGithubBtn.disabled = false;
     }
 });
@@ -164,9 +198,9 @@ saveRepoBtn.addEventListener('click', async () => {
 
     isSaving = true;
     saveRepoBtn.innerHTML = `
-    <div class="spinner"></div>
-    <span>Saving...</span>
-  `;
+        <div class="spinner"></div>
+        <span>Saving...</span>
+    `;
     saveRepoBtn.disabled = true;
 
     try {
@@ -216,9 +250,9 @@ testSyncBtn.addEventListener('click', async () => {
 
     isSyncing = true;
     testSyncBtn.innerHTML = `
-    <div class="spinner"></div>
-    <span>Syncing...</span>
-  `;
+        <div class="spinner"></div>
+        <span>Syncing...</span>
+    `;
     testSyncBtn.disabled = true;
     showMessage('Test sync initiated...', false, true);
 
@@ -260,6 +294,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             successIcon.classList.add('hidden');
         }, 2000);
     }
+});
+
+// Cleanup on popup close
+window.addEventListener('beforeunload', () => {
+    cleanupAuthCheck();
 });
 
 // Initialize on load
