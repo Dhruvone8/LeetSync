@@ -296,19 +296,33 @@ function monitorSubmitButton() {
                 const currentProblem = await extractProblemInfo();
 
                 console.log('📦 Captured data:');
+                console.log('  - Code type:', typeof currentCode);
                 console.log('  - Code length:', currentCode?.length || 0);
+                console.log('  - Code valid:', !!(currentCode && typeof currentCode === 'string' && currentCode.length > 20));
                 console.log('  - Language:', currentLang);
                 console.log('  - Problem:', currentProblem?.fullTitle);
                 console.log('  - Number:', currentProblem?.number);
 
-                if (currentCode && currentLang && currentProblem) {
-                    sessionStorage.setItem('leetcode_pending_code', currentCode);
-                    sessionStorage.setItem('leetcode_pending_language', currentLang);
-                    sessionStorage.setItem('leetcode_pending_problem', JSON.stringify(currentProblem));
-                    console.log('💾 Saved to sessionStorage');
+                if (currentCode && typeof currentCode === 'string' && currentCode.length > 20 && currentLang && currentProblem) {
+                    try {
+                        sessionStorage.setItem('leetcode_pending_code', currentCode);
+                        sessionStorage.setItem('leetcode_pending_language', currentLang);
+                        sessionStorage.setItem('leetcode_pending_problem', JSON.stringify(currentProblem));
+
+                        // Verify it was saved
+                        const savedCode = sessionStorage.getItem('leetcode_pending_code');
+                        console.log('💾 Saved to sessionStorage. Verification:', {
+                            saved: !!savedCode,
+                            length: savedCode?.length
+                        });
+                    } catch (e) {
+                        console.error('❌ SessionStorage error:', e);
+                    }
                 } else {
-                    console.error('❌ Missing data!', {
+                    console.error('❌ Invalid data on submit!', {
                         hasCode: !!currentCode,
+                        codeType: typeof currentCode,
+                        codeLength: currentCode?.length,
                         hasLang: !!currentLang,
                         hasProblem: !!currentProblem
                     });
@@ -349,6 +363,12 @@ function monitorSubmissions() {
                         let language = sessionStorage.getItem('leetcode_pending_language');
                         let problemJson = sessionStorage.getItem('leetcode_pending_problem');
 
+                        console.log('📦 Retrieved from sessionStorage:');
+                        console.log('  - Code type:', typeof code);
+                        console.log('  - Code length:', code?.length);
+                        console.log('  - Language:', language);
+                        console.log('  - Problem JSON:', !!problemJson);
+
                         let problemInfo = null;
                         if (problemJson) {
                             try {
@@ -358,15 +378,26 @@ function monitorSubmissions() {
                             }
                         }
 
-                        // Re-extract if needed
+                        // Re-extract if needed with retries
                         if (!problemInfo) {
                             console.log('Re-extracting problem...');
                             problemInfo = await extractProblemInfo();
                         }
-                        if (!code) {
+
+                        // Try multiple times to get code if needed
+                        if (!code || !code.length) {
                             console.log('Re-extracting code...');
-                            code = extractCode();
+                            for (let attempt = 0; attempt < 3; attempt++) {
+                                await new Promise(resolve => setTimeout(resolve, 500));
+                                code = extractCode();
+                                if (code && code.length > 20) {
+                                    console.log(`✅ Got code on attempt ${attempt + 1}`);
+                                    break;
+                                }
+                                console.log(`⏳ Attempt ${attempt + 1} failed, retrying...`);
+                            }
                         }
+
                         if (!language) {
                             console.log('Re-detecting language...');
                             language = detectLanguage();
@@ -378,8 +409,9 @@ function monitorSubmissions() {
                         console.log('  - Difficulty:', problemInfo?.difficulty);
                         console.log('  - Language:', language);
                         console.log('  - Code length:', code?.length);
+                        console.log('  - Has valid code:', !!(code && code.length > 20));
 
-                        if (problemInfo && code && language && code.length > 20) {
+                        if (problemInfo && code && language && typeof code === 'string' && code.length > 20) {
                             const submissionData = {
                                 ...problemInfo,
                                 code: code,
