@@ -80,6 +80,19 @@ function cleanupAuthCheck() {
     }
 }
 
+// Safe close auth window without checking .closed property
+function closeAuthWindow() {
+    if (authWindow) {
+        try {
+            authWindow.close();
+        } catch (e) {
+            // Ignore errors when closing cross-origin window
+            console.log('Could not close auth window (cross-origin)');
+        }
+        authWindow = null;
+    }
+}
+
 // Connect GitHub
 connectGithubBtn.addEventListener('click', async () => {
     if (isAuthenticating) return;
@@ -121,9 +134,8 @@ connectGithubBtn.addEventListener('click', async () => {
                 window.removeEventListener('message', messageHandler);
                 cleanupAuthCheck();
 
-                if (authWindow && !authWindow.closed) {
-                    authWindow.close();
-                }
+                // Close window without checking .closed property
+                closeAuthWindow();
 
                 // Reset button state
                 isAuthenticating = false;
@@ -139,19 +151,19 @@ connectGithubBtn.addEventListener('click', async () => {
 
         window.addEventListener('message', messageHandler);
 
-        // Check if window exists using a safer method
-        // We can't check authWindow.closed due to COOP, so we'll use a timeout
+        // Use timeout instead of checking window.closed (which causes COOP error)
         let checkAttempts = 0;
         const maxAttempts = 60; // 60 seconds timeout
 
         authCheckInterval = setInterval(() => {
             checkAttempts++;
 
-            // If we've been waiting too long, assume user closed window
+            // If we've been waiting too long, assume user closed window or gave up
             if (checkAttempts >= maxAttempts) {
                 if (isAuthenticating) {
                     cleanupAuthCheck();
                     window.removeEventListener('message', messageHandler);
+                    closeAuthWindow();
                     isAuthenticating = false;
                     connectGithubBtn.innerHTML = `
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -169,6 +181,7 @@ connectGithubBtn.addEventListener('click', async () => {
         console.error('Auth error:', error);
         showMessage('Authentication failed. Please try again.');
         cleanupAuthCheck();
+        closeAuthWindow();
         isAuthenticating = false;
         connectGithubBtn.innerHTML = `
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -299,6 +312,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Cleanup on popup close
 window.addEventListener('beforeunload', () => {
     cleanupAuthCheck();
+    closeAuthWindow();
 });
 
 // Initialize on load
