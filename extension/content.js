@@ -36,11 +36,11 @@ function waitForElement(selector, timeout = 10000) {
 // Extract problem information - FIXED NUMBER EXTRACTION
 async function extractProblemInfo() {
     console.log('📋 Attempting to extract problem info...');
-    
+
     try {
         // Wait for title element
         const titleElement = await waitForElement('[data-cy="question-title"], .text-title-large, div[class*="text-title"]', 5000);
-        
+
         if (!titleElement) {
             console.error('❌ Title element not found');
             return null;
@@ -48,11 +48,11 @@ async function extractProblemInfo() {
 
         const title = titleElement.textContent.trim();
         console.log('📌 Found title:', title);
-        
+
         // Extract problem number and name
         let problemNumber = '';
         let problemName = '';
-        
+
         // Parse "802. Find Eventual Safe States" format
         if (title.includes('.')) {
             const dotIndex = title.indexOf('.');
@@ -68,7 +68,7 @@ async function extractProblemInfo() {
 
         // Extract difficulty
         let difficulty = 'medium';
-        
+
         const difficultyElement = document.querySelector('[diff]') ||
             document.querySelector('.text-difficulty-easy, .text-difficulty-medium, .text-difficulty-hard') ||
             Array.from(document.querySelectorAll('div, span')).find(el => {
@@ -99,62 +99,84 @@ async function extractProblemInfo() {
 
         console.log('✅ Extracted:', result);
         return result;
-        
+
     } catch (error) {
         console.error('❌ Error extracting problem info:', error);
         return null;
     }
 }
 
-// Extract COMPLETE code from Monaco - COMPLETELY REWRITTEN
+// Extract COMPLETE code from Monaco - FIXED TO GET LONGEST CODE
 function extractCode() {
     console.log('💻 Extracting code...');
-    
+
     try {
         // PRIMARY METHOD: Monaco API
         if (window.monaco && window.monaco.editor) {
             console.log('🔍 Using Monaco API...');
-            
-            // Try getEditors first
+
+            // Try getEditors first - GET THE LONGEST CODE (skip empty editors)
             try {
                 const editors = window.monaco.editor.getEditors();
                 console.log('Found', editors.length, 'editors');
-                
-                for (const editor of editors) {
+
+                let longestCode = '';
+
+                for (let i = 0; i < editors.length; i++) {
                     try {
+                        const editor = editors[i];
                         const model = editor.getModel();
                         if (model) {
                             const code = model.getValue();
-                            if (code && code.length > 20) {
-                                console.log('✅ Extracted from editor (' + code.length + ' chars)');
-                                console.log('First 100 chars:', code.substring(0, 100));
-                                return code;
+                            console.log(`Editor ${i} length:`, code.length);
+
+                            // Keep the longest code (actual solution, not empty editor)
+                            if (code && code.length > longestCode.length) {
+                                longestCode = code;
                             }
                         }
                     } catch (e) {
+                        console.log(`Editor ${i} error:`, e.message);
                         continue;
                     }
+                }
+
+                if (longestCode.length > 20) {
+                    console.log('✅ Extracted longest code (' + longestCode.length + ' chars)');
+                    console.log('First 100 chars:', longestCode.substring(0, 100));
+                    return longestCode;
                 }
             } catch (e) {
                 console.log('getEditors failed:', e.message);
             }
-            
-            // Try getModels
+
+            // Try getModels - GET THE LONGEST CODE
             try {
                 const models = window.monaco.editor.getModels();
                 console.log('Found', models.length, 'models');
-                
-                for (const model of models) {
+
+                let longestCode = '';
+
+                for (let i = 0; i < models.length; i++) {
                     try {
+                        const model = models[i];
                         const code = model.getValue();
-                        if (code && code.length > 20) {
-                            console.log('✅ Extracted from model (' + code.length + ' chars)');
-                            console.log('First 100 chars:', code.substring(0, 100));
-                            return code;
+                        console.log(`Model ${i} length:`, code.length);
+
+                        // Keep the longest code
+                        if (code && code.length > longestCode.length) {
+                            longestCode = code;
                         }
                     } catch (e) {
+                        console.log(`Model ${i} error:`, e.message);
                         continue;
                     }
+                }
+
+                if (longestCode.length > 20) {
+                    console.log('✅ Extracted longest model code (' + longestCode.length + ' chars)');
+                    console.log('First 100 chars:', longestCode.substring(0, 100));
+                    return longestCode;
                 }
             } catch (e) {
                 console.log('getModels failed:', e.message);
@@ -165,7 +187,7 @@ function extractCode() {
         console.log('🔍 Trying DOM extraction...');
         const viewLines = document.querySelectorAll('.view-line');
         console.log('Found', viewLines.length, 'view lines');
-        
+
         if (viewLines.length > 0) {
             const lines = [];
             viewLines.forEach(line => {
@@ -173,7 +195,7 @@ function extractCode() {
                 const lineText = line.textContent;
                 lines.push(lineText);
             });
-            
+
             const code = lines.join('\n');
             if (code && code.length > 20) {
                 console.log('✅ Extracted from DOM (' + code.length + ' chars)');
@@ -184,7 +206,7 @@ function extractCode() {
 
         console.error('❌ No code found');
         return null;
-        
+
     } catch (error) {
         console.error('❌ Extraction error:', error);
         return null;
@@ -194,15 +216,15 @@ function extractCode() {
 // Detect language
 function detectLanguage() {
     console.log('🔤 Detecting language...');
-    
+
     try {
         const buttons = Array.from(document.querySelectorAll('button'));
-        
+
         const languageButton = buttons.find(btn => {
             const text = btn.textContent;
             return text.match(/C\+\+|Java|Python|JavaScript|TypeScript|Go|Rust|C#|Ruby|Swift|Kotlin|Scala|PHP/i) &&
-                   !text.includes('Description') &&
-                   text.length < 30;
+                !text.includes('Description') &&
+                text.length < 30;
         });
 
         if (languageButton) {
@@ -236,7 +258,7 @@ function detectLanguage() {
 
         console.warn('⚠️ Default: cpp');
         return 'cpp';
-        
+
     } catch (error) {
         console.error('❌ Error:', error);
         return 'cpp';
@@ -246,12 +268,12 @@ function detectLanguage() {
 // Monitor submit button
 function monitorSubmitButton() {
     console.log('👀 Monitoring submit button...');
-    
+
     let submitButtonFound = false;
-    
+
     const observer = new MutationObserver(() => {
         if (submitButtonFound) return;
-        
+
         const submitButton = document.querySelector('button[data-e2e-locator="console-submit-button"]') ||
             Array.from(document.querySelectorAll('button')).find(btn =>
                 btn.textContent.trim().toLowerCase() === 'submit'
@@ -261,24 +283,24 @@ function monitorSubmitButton() {
             submitButton.dataset.monitored = 'true';
             submitButtonFound = true;
             console.log('✅ Submit button monitored');
-            
+
             submitButton.addEventListener('click', async () => {
                 console.log('🔔 SUBMIT CLICKED!');
                 isSubmitting = true;
-                
+
                 // Wait for Monaco to update
                 await new Promise(resolve => setTimeout(resolve, 300));
-                
+
                 const currentCode = extractCode();
                 const currentLang = detectLanguage();
                 const currentProblem = await extractProblemInfo();
-                
+
                 console.log('📦 Captured data:');
                 console.log('  - Code length:', currentCode?.length || 0);
                 console.log('  - Language:', currentLang);
                 console.log('  - Problem:', currentProblem?.fullTitle);
                 console.log('  - Number:', currentProblem?.number);
-                
+
                 if (currentCode && currentLang && currentProblem) {
                     sessionStorage.setItem('leetcode_pending_code', currentCode);
                     sessionStorage.setItem('leetcode_pending_language', currentLang);
@@ -304,14 +326,14 @@ function monitorSubmitButton() {
 // Monitor for accepted submissions
 function monitorSubmissions() {
     console.log('👀 Monitoring submissions...');
-    
+
     const observer = new MutationObserver((mutations) => {
         if (!isSubmitting) return;
 
         for (const mutation of mutations) {
             for (const node of mutation.addedNodes) {
                 if (node.nodeType !== 1) continue;
-                
+
                 const text = node.textContent || '';
                 const isAccepted = text.includes('Accepted') ||
                     node.querySelector?.('[class*="text-green"]')?.textContent?.includes('Accepted') ||
@@ -319,14 +341,14 @@ function monitorSubmissions() {
 
                 if (isAccepted) {
                     console.log('🎉 ACCEPTED!');
-                    
+
                     setTimeout(async () => {
                         console.log('⏱️ Processing submission...');
-                        
+
                         let code = sessionStorage.getItem('leetcode_pending_code');
                         let language = sessionStorage.getItem('leetcode_pending_language');
                         let problemJson = sessionStorage.getItem('leetcode_pending_problem');
-                        
+
                         let problemInfo = null;
                         if (problemJson) {
                             try {
@@ -335,7 +357,7 @@ function monitorSubmissions() {
                                 console.error('Parse error:', e);
                             }
                         }
-                        
+
                         // Re-extract if needed
                         if (!problemInfo) {
                             console.log('Re-extracting problem...');
@@ -395,7 +417,7 @@ function monitorSubmissions() {
 
                         isSubmitting = false;
                     }, 2000);
-                    
+
                     break;
                 }
             }
@@ -411,9 +433,9 @@ function monitorSubmissions() {
 // Initialize
 async function init() {
     console.log('🔧 Init (attempt ' + (initAttempts + 1) + ')');
-    
+
     const problemInfo = await extractProblemInfo();
-    
+
     if (problemInfo) {
         console.log('🎯 Monitoring:', problemInfo.fullTitle);
         monitorSubmitButton();
