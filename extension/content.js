@@ -1,4 +1,4 @@
-// Content script to monitor LeetCode submissions - ROBUST VERSION
+// Content script to monitor LeetCode submissions - FIXED VERSION
 
 let lastSubmittedCode = null;
 let isSubmitting = false;
@@ -36,22 +36,22 @@ function waitForElement(selector, timeout = 10000) {
 // Extract problem information from the page
 async function extractProblemInfo() {
     console.log('📋 Attempting to extract problem info...');
-    
+
     try {
         // Wait for title element to appear
         const titleElement = await waitForElement('[data-cy="question-title"], .text-title-large, div[class*="text-title"], a[href*="/problems/"]', 5000);
-        
+
         if (!titleElement) {
             console.error('❌ Could not find title element after waiting');
-            
+
             // Fallback: extract from URL
             const urlMatch = window.location.pathname.match(/\/problems\/([^\/]+)/);
             if (urlMatch) {
                 const slug = urlMatch[1];
-                const problemName = slug.split('-').map(w => 
+                const problemName = slug.split('-').map(w =>
                     w.charAt(0).toUpperCase() + w.slice(1)
                 ).join('');
-                
+
                 console.log('⚠️ Using URL-based fallback');
                 return {
                     number: '0',
@@ -65,11 +65,11 @@ async function extractProblemInfo() {
 
         const title = titleElement.textContent.trim();
         console.log('📌 Found title:', title);
-        
+
         // Extract problem number and name
         let problemNumber = '';
         let problemName = '';
-        
+
         if (title.includes('.')) {
             const parts = title.split('.');
             problemNumber = parts[0].trim();
@@ -79,7 +79,7 @@ async function extractProblemInfo() {
             const urlMatch = window.location.pathname.match(/\/problems\/([^\/]+)/);
             if (urlMatch) {
                 const slug = urlMatch[1];
-                problemName = slug.split('-').map(w => 
+                problemName = slug.split('-').map(w =>
                     w.charAt(0).toUpperCase() + w.slice(1)
                 ).join('');
             }
@@ -89,21 +89,21 @@ async function extractProblemInfo() {
 
         // Extract difficulty - try multiple methods
         let difficulty = 'medium';
-        
+
         // Method 1: Look for difficulty attribute
         let difficultyElement = document.querySelector('[diff]');
-        
+
         // Method 2: Look for class-based difficulty
         if (!difficultyElement) {
             difficultyElement = document.querySelector('.text-difficulty-easy, .text-difficulty-medium, .text-difficulty-hard');
         }
-        
+
         // Method 3: Look for any element containing just difficulty text
         if (!difficultyElement) {
             difficultyElement = Array.from(document.querySelectorAll('div, span')).find(el => {
                 const text = el.textContent.toLowerCase().trim();
-                return (text === 'easy' || text === 'medium' || text === 'hard') && 
-                       el.textContent.length < 10;
+                return (text === 'easy' || text === 'medium' || text === 'hard') &&
+                    el.textContent.length < 10;
             });
         }
 
@@ -132,87 +132,115 @@ async function extractProblemInfo() {
 
         console.log('✅ Extracted problem info:', result);
         return result;
-        
+
     } catch (error) {
         console.error('❌ Error extracting problem info:', error);
         return null;
     }
 }
 
-// Extract code from Monaco editor
+// Extract code from Monaco editor - IMPROVED
 function extractCode() {
     console.log('💻 Attempting to extract code...');
-    
+
     try {
-        // Method 1: Monaco API (most reliable)
+        // Method 1: Monaco API (most reliable for complete code)
         if (window.monaco && window.monaco.editor) {
             console.log('🔍 Trying Monaco API...');
+            const editors = window.monaco.editor.getEditors();
+
+            // Try all editors, find the one with actual code
+            for (const editor of editors) {
+                const model = editor.getModel();
+                if (model) {
+                    const code = model.getValue();
+                    if (code && code.trim().length > 10) {
+                        console.log('✅ Code extracted via Monaco editor (' + code.length + ' chars)');
+                        return code;
+                    }
+                }
+            }
+
+            // Fallback to getModels
             const models = window.monaco.editor.getModels();
             if (models && models.length > 0) {
-                const code = models[0].getValue();
-                if (code && code.trim().length > 0) {
-                    console.log('✅ Code extracted via Monaco API (' + code.length + ' chars)');
+                for (const model of models) {
+                    const code = model.getValue();
+                    if (code && code.trim().length > 10) {
+                        console.log('✅ Code extracted via Monaco model (' + code.length + ' chars)');
+                        return code;
+                    }
+                }
+            }
+        } else {
+            console.warn('⚠️ Monaco not available');
+        }
+
+        // Method 2: Extract from DOM - get ALL text content
+        console.log('🔍 Trying DOM extraction...');
+        const editorContainer = document.querySelector('.monaco-editor') ||
+            document.querySelector('[class*="editor"]');
+
+        if (editorContainer) {
+            const viewLines = editorContainer.querySelectorAll('.view-line');
+            if (viewLines.length > 0) {
+                const lines = Array.from(viewLines).map(line => {
+                    // Get all text nodes
+                    return line.textContent || '';
+                });
+                const code = lines.join('\n');
+                if (code && code.trim().length > 10) {
+                    console.log('✅ Code extracted via DOM (' + code.length + ' chars)');
                     return code;
                 }
             }
         }
 
-        // Method 2: View lines
-        console.log('🔍 Trying view-line extraction...');
-        const viewLines = document.querySelectorAll('.view-line');
-        if (viewLines.length > 0) {
-            const lines = Array.from(viewLines).map(line => line.textContent);
-            const code = lines.join('\n');
-            if (code && code.trim().length > 0) {
-                console.log('✅ Code extracted via view lines (' + code.length + ' chars)');
-                return code;
-            }
-        }
-
-        // Method 3: Textarea
-        console.log('🔍 Trying textarea fallback...');
-        const textarea = document.querySelector('textarea');
-        if (textarea && textarea.value) {
-            console.log('✅ Code extracted via textarea (' + textarea.value.length + ' chars)');
-            return textarea.value;
-        }
-
         console.error('❌ Could not extract code');
         return null;
-        
+
     } catch (error) {
         console.error('❌ Error extracting code:', error);
         return null;
     }
 }
 
-// Detect programming language
+// Detect programming language - FIXED
 function detectLanguage() {
     console.log('🔤 Detecting language...');
-    
+
     try {
-        // Look for language button
-        const languageButton = document.querySelector('[id*="headlessui-listbox-button"]') ||
-            document.querySelector('button[id^="headlessui-listbox-button"]') ||
-            Array.from(document.querySelectorAll('button')).find(btn => 
-                btn.textContent.match(/C\+\+|Java|Python|JavaScript|TypeScript|Go|Rust|C#|Ruby|Swift|Kotlin|Scala|PHP|C(?!\+)/i)
-            );
+        // Look for the language selector - it's usually a button with a dropdown
+        // Try to find the button that shows the current language
+        const buttons = Array.from(document.querySelectorAll('button'));
+
+        // Filter buttons that might contain language names
+        const languageButton = buttons.find(btn => {
+            const text = btn.textContent;
+            return text.match(/C\+\+|Java|Python|JavaScript|TypeScript|Go|Rust|C#|Ruby|Swift|Kotlin|Scala|PHP/i) &&
+                !text.includes('Description') &&
+                text.length < 30;
+        });
 
         if (languageButton) {
             const langText = languageButton.textContent.toLowerCase().trim();
             console.log('🔤 Found language button text:', langText);
 
             const languageMap = {
-                'c++': 'cpp', 'cpp': 'cpp', 'c': 'c',
-                'java': 'java', 'python': 'py', 'python3': 'py',
-                'javascript': 'js', 'typescript': 'ts',
+                'c++': 'cpp', 'cpp': 'cpp',
+                'java': 'java',
+                'python': 'py', 'python3': 'py',
+                'javascript': 'js',
+                'typescript': 'ts',
                 'c#': 'cs', 'csharp': 'cs',
                 'go': 'go', 'golang': 'go',
-                'rust': 'rs', 'kotlin': 'kt',
-                'swift': 'swift', 'ruby': 'rb',
-                'scala': 'scala', 'php': 'php',
-                'mysql': 'sql', 'mssql': 'sql',
-                'oracle': 'sql', 'postgresql': 'sql'
+                'rust': 'rs',
+                'kotlin': 'kt',
+                'swift': 'swift',
+                'ruby': 'rb',
+                'scala': 'scala',
+                'php': 'php',
+                'c': 'c'
             };
 
             for (const [key, ext] of Object.entries(languageMap)) {
@@ -223,9 +251,20 @@ function detectLanguage() {
             }
         }
 
+        // Fallback: check for syntax in the code itself
+        console.log('🔍 Trying syntax-based detection...');
+        const code = extractCode();
+        if (code) {
+            if (code.includes('class ') && code.includes('public:')) return 'cpp';
+            if (code.includes('public class')) return 'java';
+            if (code.includes('def ') && code.includes(':')) return 'py';
+            if (code.includes('function ') || code.includes('=>')) return 'js';
+            if (code.includes('func ') && code.includes('->')) return 'swift';
+        }
+
         console.warn('⚠️ Using default: cpp');
         return 'cpp';
-        
+
     } catch (error) {
         console.error('❌ Error detecting language:', error);
         return 'cpp';
@@ -235,12 +274,12 @@ function detectLanguage() {
 // Monitor submit button
 function monitorSubmitButton() {
     console.log('👀 Setting up submit button monitor...');
-    
+
     let submitButtonFound = false;
-    
+
     const observer = new MutationObserver(() => {
         if (submitButtonFound) return;
-        
+
         const submitButton = document.querySelector('button[data-e2e-locator="console-submit-button"]') ||
             Array.from(document.querySelectorAll('button')).find(btn =>
                 btn.textContent.trim().toLowerCase() === 'submit'
@@ -250,25 +289,26 @@ function monitorSubmitButton() {
             submitButton.dataset.monitored = 'true';
             submitButtonFound = true;
             console.log('✅ Submit button found and monitored');
-            
+
             submitButton.addEventListener('click', async () => {
                 console.log('🔔 SUBMIT BUTTON CLICKED!');
                 isSubmitting = true;
-                
-                // Small delay to let Monaco update
-                await new Promise(resolve => setTimeout(resolve, 100));
-                
+
+                // Wait a bit for Monaco to update
+                await new Promise(resolve => setTimeout(resolve, 200));
+
                 const currentCode = extractCode();
                 const currentLang = detectLanguage();
                 const currentProblem = await extractProblemInfo();
-                
+
                 console.log('📦 Captured:', {
                     hasCode: !!currentCode,
+                    codeLength: currentCode?.length || 0,
                     hasLang: !!currentLang,
-                    hasProblem: !!currentProblem,
-                    codeLength: currentCode?.length || 0
+                    language: currentLang,
+                    hasProblem: !!currentProblem
                 });
-                
+
                 if (currentCode && currentLang && currentProblem) {
                     sessionStorage.setItem('leetcode_pending_code', currentCode);
                     sessionStorage.setItem('leetcode_pending_language', currentLang);
@@ -290,14 +330,14 @@ function monitorSubmitButton() {
 // Monitor for accepted submissions
 function monitorSubmissions() {
     console.log('👀 Setting up submission monitor...');
-    
+
     const observer = new MutationObserver((mutations) => {
         if (!isSubmitting) return;
 
         for (const mutation of mutations) {
             for (const node of mutation.addedNodes) {
                 if (node.nodeType !== 1) continue;
-                
+
                 const text = node.textContent || '';
                 const isAccepted = text.includes('Accepted') ||
                     node.querySelector?.('[class*="text-green"]')?.textContent?.includes('Accepted') ||
@@ -305,14 +345,14 @@ function monitorSubmissions() {
 
                 if (isAccepted) {
                     console.log('🎉 ACCEPTED DETECTED!');
-                    
+
                     setTimeout(async () => {
                         console.log('⏱️ Processing...');
-                        
+
                         let code = sessionStorage.getItem('leetcode_pending_code');
                         let language = sessionStorage.getItem('leetcode_pending_language');
                         let problemJson = sessionStorage.getItem('leetcode_pending_problem');
-                        
+
                         let problemInfo = null;
                         if (problemJson) {
                             try {
@@ -321,11 +361,20 @@ function monitorSubmissions() {
                                 console.error('Parse error:', e);
                             }
                         }
-                        
+
                         // Fallback extraction
-                        if (!problemInfo) problemInfo = await extractProblemInfo();
-                        if (!code) code = extractCode();
-                        if (!language) language = detectLanguage();
+                        if (!problemInfo) {
+                            console.log('⚠️ Re-extracting problem info...');
+                            problemInfo = await extractProblemInfo();
+                        }
+                        if (!code) {
+                            console.log('⚠️ Re-extracting code...');
+                            code = extractCode();
+                        }
+                        if (!language) {
+                            console.log('⚠️ Re-detecting language...');
+                            language = detectLanguage();
+                        }
 
                         if (problemInfo && code && language) {
                             const submissionData = {
@@ -339,7 +388,8 @@ function monitorSubmissions() {
                                 problem: submissionData.fullTitle,
                                 number: submissionData.number,
                                 difficulty: submissionData.difficulty,
-                                language: language
+                                language: language,
+                                codeLength: code.length
                             });
 
                             const codeHash = btoa(code).slice(0, 50);
@@ -356,6 +406,8 @@ function monitorSubmissions() {
                                         console.log('✅ Sent successfully!');
                                     }
                                 });
+                            } else {
+                                console.log('⏭️ Duplicate, skipping');
                             }
 
                             sessionStorage.removeItem('leetcode_pending_code');
@@ -371,7 +423,7 @@ function monitorSubmissions() {
 
                         isSubmitting = false;
                     }, 2000);
-                    
+
                     break;
                 }
             }
@@ -387,9 +439,9 @@ function monitorSubmissions() {
 // Initialize with retries
 async function init() {
     console.log('🔧 Initializing... (attempt ' + (initAttempts + 1) + ')');
-    
+
     const problemInfo = await extractProblemInfo();
-    
+
     if (problemInfo) {
         console.log('🎯 Monitoring:', problemInfo.fullTitle);
         monitorSubmitButton();
